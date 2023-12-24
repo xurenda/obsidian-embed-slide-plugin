@@ -1,134 +1,77 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
-
-// Remember to rename these classes and interfaces!
-
-interface MyPluginSettings {
-	mySetting: string;
-}
-
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
-}
+import { MarkdownPostProcessorContext, Plugin } from "obsidian";
 
 export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
-
 	async onload() {
-		await this.loadSettings();
-
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
+		this.app.workspace.onLayoutReady(() => {
+			this.registerMarkdownPostProcessor(markdownPostProcessor);
 		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
+	}
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
+	onunload() {}
+}
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
+const markdownPostProcessor = (
+	el: HTMLElement,
+	ctx: MarkdownPostProcessorContext
+) => {
+	// @ts-ignore
+	for (const p of el.querySelectorAll("p")) {
+		if (
+			p.textContent?.startsWith("<<<") &&
+			p.textContent?.endsWith(">>>")
+		) {
+			window.setTimeout(() => {
+				const imgs = p?.querySelectorAll("img, svg");
+				if (imgs && imgs.length > 0) {
+					p.parentElement.replaceChild(buildHtml(imgs), p);
 				}
-			}
-		});
-
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+			}, 200);
+		}
 	}
+};
 
-	onunload() {
-
+const buildHtml = (imgs: NodeListOf<HTMLElement>) => {
+	const wrapper = document.createElement("div");
+	wrapper.className = "embed-slide-wrapper";
+	wrapper.dataset.total = imgs.length + "";
+	wrapper.dataset.cur = "0";
+	const content = document.createElement("div");
+	content.className = "embed-slide-content";
+	// @ts-ignore
+	for (const img of imgs) {
+		img.classList.add("embed-slide-img");
+		content.appendChild(img);
 	}
-
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
-
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
-}
-
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
-
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
-
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
-
-	constructor(app: App, plugin: MyPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const {containerEl} = this;
-
-		containerEl.empty();
-
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
-	}
-}
+	const controller = document.createElement("div");
+	controller.className = "embed-slide-controller";
+	controller.innerHTML = `<svg
+	class="embed-slide-controller-prev"
+	height="24"
+	viewBox="0 0 24 24"
+	width="24"
+	xmlns="http://www.w3.org/2000/svg"
+	onclick="var wrapper = event.target?.closest('.embed-slide-wrapper');if(wrapper){var total = Number(wrapper.dataset.total);var cur = Number(wrapper.dataset.cur);var imgs = wrapper.querySelectorAll('.embed-slide-img');imgs[cur].dataset.hidden = 'true';cur = (cur - 1 + total) % total;wrapper.dataset.cur = cur;imgs[cur].dataset.hidden = 'false';wrapper.querySelector('.embed-slide-controller-num').innerText = cur + 1 + ' / ' + total;}"
+>
+	<path
+		d="m18 18-8.5-6 8.5-6zm-10-12v12h-2v-12z"
+		fill="currentColor"
+	></path>
+</svg>
+<span class="embed-slide-controller-num">1 / ${imgs.length}</span>
+<svg
+	class="embed-slide-controller-next"
+	height="24"
+	viewBox="0 0 24 24"
+	width="24"
+	xmlns="http://www.w3.org/2000/svg"
+	onclick="var wrapper = event.target?.closest('.embed-slide-wrapper');if(wrapper){var total = Number(wrapper.dataset.total);var cur = Number(wrapper.dataset.cur);var imgs = wrapper.querySelectorAll('.embed-slide-img');imgs[cur].dataset.hidden = 'true';cur = (cur + 1 + total) % total;wrapper.dataset.cur = cur;imgs[cur].dataset.hidden = 'false';wrapper.querySelector('.embed-slide-controller-num').innerText = cur + 1 + ' / ' + total;}"
+>
+	<path
+		d="m6 18 8.5-6-8.5-6zm10-12v12h2v-12z"
+		fill="currentColor"
+	></path>
+</svg>`;
+	wrapper.appendChild(content);
+	wrapper.appendChild(controller);
+	return wrapper;
+};
